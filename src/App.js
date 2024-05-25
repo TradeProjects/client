@@ -1,5 +1,5 @@
 /* eslint-disable */
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import {
   Container,
@@ -12,8 +12,6 @@ import {
   Box,
 } from "@mui/material";
 import * as d3 from "d3";
-import yahooFinance from "yahoo-finance2";
-import mongoose from "mongoose";
 
 const calculateSMA = (data, windowSize) => {
   let sma = data.map((_, idx, arr) => {
@@ -26,6 +24,107 @@ const calculateSMA = (data, windowSize) => {
     return { date: arr[idx].date, sma: average };
   });
   return sma;
+};
+
+const CandleStickChart = ({ data }) => {
+  const svgRef = React.useRef();
+  // eslint-disable-next-line
+  useEffect(() => {
+    if (data && data.length > 0) {
+      // eslint-disable-next-line
+      drawChart();
+    }
+  }, [data]);
+  // eslint-disable-next-line
+  const drawChart = () => {
+    const svg = d3.select(svgRef.current);
+    svg.selectAll("*").remove(); // Clear previous content
+
+    const margin = { top: 20, right: 30, bottom: 30, left: 40 },
+      width = 800 - margin.left - margin.right,
+      height = 400 - margin.top - margin.bottom;
+
+    const x = d3
+      .scaleBand()
+      .range([0, width])
+      .domain(data.map((d) => d.date))
+      .padding(0.2);
+
+    const xTimeScale = d3
+      .scaleTime()
+      .domain(d3.extent(data, (d) => d.date))
+      .range([0, width]);
+
+    const y = d3
+      .scaleLinear()
+      .domain([d3.min(data, (d) => d.low), d3.max(data, (d) => d.high)])
+      .nice()
+      .range([height, 0]);
+
+    const xAxis = (g) =>
+      g
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(xTimeScale));
+
+    const yAxis = (g) =>
+      g.attr("transform", `translate(0,0)`).call(d3.axisLeft(y));
+
+    svg
+      .append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    svg
+      .append("g")
+      .call(xAxis)
+      .selectAll("text")
+      .attr("transform", "rotate(-45)")
+      .style("text-anchor", "end");
+
+    svg.append("g").call(yAxis);
+
+    svg
+      .append("g")
+      .selectAll(".candle")
+      .data(data)
+      .enter()
+      .append("rect")
+      .attr("class", "candle")
+      .attr("x", (d) => x(d.date))
+      .attr("y", (d) => y(Math.max(d.open, d.close)))
+      .attr("width", x.bandwidth())
+      .attr("height", (d) => Math.abs(y(d.open) - y(d.close)))
+      .attr("fill", (d) => (d.open > d.close ? "red" : "green"));
+
+    svg
+      .append("g")
+      .selectAll(".wick")
+      .data(data)
+      .enter()
+      .append("line")
+      .attr("class", "wick")
+      .attr("x1", (d) => x(d.date) + x.bandwidth() / 2)
+      .attr("x2", (d) => x(d.date) + x.bandwidth() / 2)
+      .attr("y1", (d) => y(d.high))
+      .attr("y2", (d) => y(d.low))
+      .attr("stroke", "black");
+
+    const smaData = calculateSMA(data, 10).filter((d) => d.sma !== null);
+
+    const line = d3
+      .line()
+      .x((d) => x(d.date) + x.bandwidth() / 2)
+      .y((d) => y(d.sma));
+
+    svg
+      .append("path")
+      .datum(smaData)
+      .attr("fill", "none")
+      .attr("stroke", "blue")
+      .attr("stroke-width", 2)
+      .attr("d", line);
+  };
+
+  return <svg ref={svgRef} width={800} height={400} />;
 };
 
 const App = () => {
@@ -42,65 +141,10 @@ const App = () => {
   const [field3Text, setField3Text] = useState("");
   const [field3Percent, setField3Percent] = useState("");
 
-  const saveDataToMongoDB = async () => {
-    const mongoURI =
-      "mongodb://tradedata:Trade1234@ac-m6cnuwr-shard-00-00.awscipt.mongodb.net:27017,ac-m6cnuwr-shard-00-01.awscipt.mongodb.net:27017,ac-m6cnuwr-shard-00-02.awscipt.mongodb.net:27017/?ssl=true&replicaSet=atlas-112lz4-shard-0&authSource=admin&retryWrites=true&w=majority&appName=trading"; // Replace with your MongoDB URI
-    mongoose
-      .connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
-      .then(() => console.log("MongoDB connected"))
-      .catch((err) => console.error("MongoDB connection error:", err));
-
-    const Stock = mongoose.model("Stock", {
-      stock: String,
-      year: Number,
-      quarter: Number,
-      field1Text: String,
-      field1Percent: Number,
-      field2Text: String,
-      field2Percent: Number,
-      field3Text: String,
-      field3Percent: Number,
-      data: Array,
-    });
-
-    const newStock = new Stock({
-      stock,
-      year,
-      quarter,
-      field1Text,
-      field1Percent,
-      field2Text,
-      field2Percent,
-      field3Text,
-      field3Percent,
-      data,
-    });
-
+  const fetchData = async () => {
     try {
-      await newStock.save();
-      setResponse("Data saved successfully");
-    } catch (error) {
-      console.error("Error saving data:", error.message);
-      setResponse("Error saving data");
-    }
-  };
-
-  const fetchDataFromYahooFinance = async () => {
-    const startDate = `${year}-${String((quarter - 1) * 3 + 1).padStart(
-      2,
-      "0"
-    )}-01`;
-    const endDate = `${year}-${String(quarter * 3).padStart(2, "0")}-01`;
-
-    const queryOptions = {
-      period1: startDate,
-      period2: endDate,
-      interval: "1d",
-    };
-
-    try {
-      const result = await yahooFinance.historical(stock, queryOptions);
-      const stockData = result.map((d) => ({
+      const response = await axios.post("/api/stock", { stock, year, quarter });
+      const stockData = response.data.map((d) => ({
         date: new Date(d.date),
         open: d.open,
         high: d.high,
@@ -110,7 +154,40 @@ const App = () => {
       }));
       setData(stockData);
     } catch (error) {
-      console.error("Error fetching stock data:", error.message);
+      console.error("Error fetching stock data", error);
+    }
+  };
+
+  const handleReset = () => {
+    setStock("");
+    setYear("");
+    setQuarter("");
+    setField1Text("");
+    setField1Percent("");
+    setField2Text("");
+    setField2Percent("");
+    setField3Text("");
+    setField3Percent("");
+  };
+
+  const handleSubmit = async () => {
+    try {
+      const response = await axios.post("/api/save", {
+        stock,
+        year,
+        quarter,
+        field1Text,
+        field1Percent,
+        field2Text,
+        field2Percent,
+        field3Text,
+        field3Percent,
+        data,
+      });
+      setResponse(response.data);
+    } catch (error) {
+      console.error("Error saving data", error);
+      setResponse("Error saving data");
     }
   };
 
@@ -136,19 +213,16 @@ const App = () => {
           <InputLabel>Quarter</InputLabel>
           <Select value={quarter} onChange={(e) => setQuarter(e.target.value)}>
             <MenuItem value={1}>Q1</MenuItem>
-            <MenuItem value={2}>Q Q2</MenuItem>
+            <MenuItem value={2}>Q2</MenuItem>
             <MenuItem value={3}>Q3</MenuItem>
             <MenuItem value={4}>Q4</MenuItem>
           </Select>
         </FormControl>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={fetchDataFromYahooFinance}
-        >
+        <Button variant="contained" color="primary" onClick={fetchData}>
           Fetch Data
         </Button>
         <Box component="form" noValidate autoComplete="off">
+          {/* Other form fields */}
           <Button variant="contained" color="secondary" onClick={handleReset}>
             Reset
           </Button>
@@ -201,11 +275,7 @@ const App = () => {
             fullWidth
             margin="normal"
           />
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={saveDataToMongoDB}
-          >
+          <Button variant="contained" color="primary" onClick={handleSubmit}>
             Submit
           </Button>
         </Box>
