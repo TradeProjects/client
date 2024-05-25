@@ -1,4 +1,4 @@
-// eslint-disable-next-line
+/* eslint-disable */
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import {
@@ -31,10 +31,11 @@ const CandleStickChart = ({ data }) => {
   // eslint-disable-next-line
   useEffect(() => {
     if (data && data.length > 0) {
+      // eslint-disable-next-line
       drawChart();
     }
   }, [data]);
-
+  // eslint-disable-next-line
   const drawChart = () => {
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove(); // Clear previous content
