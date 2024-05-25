@@ -27,7 +27,7 @@ const calculateSMA = (data, windowSize) => {
 
 const CandleStickChart = ({ data }) => {
   const svgRef = React.useRef();
-
+  // eslint-disable-next-line
   useEffect(() => {
     if (data && data.length > 0) {
       drawChart();
