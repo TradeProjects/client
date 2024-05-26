@@ -12,7 +12,6 @@ import {
   Box,
 } from "@mui/material";
 import * as d3 from "d3";
-import { fetchStockData, saveStockData } from "./apis";
 
 const calculateSMA = (data, windowSize) => {
   let sma = data.map((_, idx, arr) => {
@@ -144,9 +143,8 @@ const App = () => {
 
   const fetchData = async () => {
     try {
-      const result = await fetchStockData({ stock, year, quarter });
-
-      const stockData = result.map((d) => ({
+      const response = await axios.post("/api/stock", { stock, year, quarter });
+      const stockData = response.data.map((d) => ({
         date: new Date(d.date),
         open: d.open,
         high: d.high,
@@ -159,6 +157,7 @@ const App = () => {
       console.error("Error fetching stock data", error);
     }
   };
+
   const handleReset = () => {
     setStock("");
     setYear("");
@@ -173,7 +172,7 @@ const App = () => {
 
   const handleSubmit = async () => {
     try {
-      const response = await saveStockData({
+      const response = await axios.post("/api/save", {
         stock,
         year,
         quarter,
@@ -185,12 +184,13 @@ const App = () => {
         field3Percent,
         data,
       });
-      setResponse(response);
+      setResponse(response.data);
     } catch (error) {
       console.error("Error saving data", error);
       setResponse("Error saving data");
     }
   };
+
   return (
     <Container>
       <h1>Stock Data</h1>
